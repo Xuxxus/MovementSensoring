@@ -20,6 +20,8 @@
  *    D19      MISO
  */
 
+TaskHandle_t Task1;
+
 const uint8_t n = 3; //número de MPUs sendo utilizado MAXIMO 13
 
 //NUMERO DO PINO DO ESP32 PARA CONECTAR CADA AD0
@@ -27,7 +29,7 @@ const uint8_t n = 3; //número de MPUs sendo utilizado MAXIMO 13
 //const uint8_t AD0_MPU[] = {15,  4, 16, 17, 3, 1, 34, 25, 32, 33, 25, 26, 27}; 
 const uint8_t AD0_MPU[] = {4, 16, 17, 3, 1, 34, 25, 32, 33, 25, 26, 27}; 
 
-double Vector_data[n][6];
+double Vector_data[n][7];
 unsigned long tempoAnterior =0;
 uint8_t T =15;
 
@@ -36,6 +38,52 @@ const int MPU_ADDR = 0x69; // I2C address of the MPU-6050
 
 char path[100]; //variavel para adicionar nome do txt
 char lineToAppend[500]; // string que armazena valor de um ciclo
+
+struct Noh{
+  double vector[n][7];
+  struct Noh *proximo;
+};
+
+struct Lista{
+  struct Noh *inicio;
+  struct Noh *fim;
+  int tamanho;
+};
+struct Lista fila;
+
+void enqueue(){
+  struct Noh *novo = (struct Noh *)malloc(sizeof(struct Noh));
+  for (int i = 0; i < n; i++) {
+    for (int j = 0; j < 7; j++) {
+      novo->vector[i][j] = Vector_data[i][j];
+    }
+  }
+  novo->proximo = NULL;
+  if(fila.fim == NULL){
+    fila.inicio = novo;
+    fila.fim = novo;
+  }
+  else{
+    fila.fim->proximo = novo;
+    fila.fim = novo;
+  }
+  fila.tamanho++;
+}
+
+void dequeue(){
+  if(fila.inicio == NULL)
+    //puts("Fila vazia!")
+    ;
+  else{
+    struct Noh *temp = fila.inicio;
+    fila.inicio = fila.inicio->proximo;
+    free(temp);
+    if (fila.inicio == NULL)
+      fila.fim=NULL;
+  }
+  fila.tamanho--;
+}
+
 
 void appendFile(fs::FS &fs, const char * path, const char * message){
     Serial.printf("Appending to file: %s\n", path);
@@ -150,8 +198,11 @@ bool readFile(fs::FS &fs, const char * path){
     return true;
 }
 
-
 void setup() {
+  fila.inicio = NULL;
+  fila.fim = NULL;
+  fila.tamanho = 0;
+  
   // colocando todos os pinos AD0 em output
   for (uint8_t i = 0; i < 13; i++){ 
     pinMode(AD0_MPU[i], OUTPUT);
@@ -194,58 +245,67 @@ void setup() {
       break;
   }
   Serial.println(path);
+
+
+  xTaskCreatePinnedToCore(
+                    Task1code,   /* Task function. */
+                    "Task1",     /* name of task. */
+                    10000,       /* Stack size of task */
+                    NULL,        /* parameter of the task */
+                    1,           /* priority of the task */
+                    &Task1,      /* Task handle to keep track of created task */
+                    0);          /* pin task to core 0 */    
   
   writeFile(SD, path, "Starting the program!\n");
   tempoAnterior = millis();
 }
+
+//LOOP RODA SEMPRE NO CORE 1
+//CRIAR NOVA TASK PARA RODAR NO CORE 0
+
+
 
 void loop() {
   float tempo[n];
   if(millis() - tempoAnterior >= T){ //para T = 0.05 -> tempoAtual [ms] - tempoAnterior [ms] >= 50 ms -> deve fazer o ciclo a cada 50ms
       //tempoAnterior = millis();
     for (uint8_t i = 0; i<n;i++){
-      //Serial.print("MPU ");Serial.print(i);Serial.println(" :");
       tempo[i] = float(millis()-tempoAnterior)/1000;
       select_MPU1(i);
       data(i);
     }
     digitalWrite(4, LOW);//verificar
-    for (uint8_t i = 0; i < n; i++){
-      for (uint8_t j = 0; j < 6; j++){
-        char txt[100]; 
-        gcvt(Vector_data[i][j], 6, txt);
-        appendFile(SD, path, txt);
-        appendFile(SD, path, ",");
-      }
-      char txt[100]; 
-      gcvt(tempo[i], 6, txt);
-      appendFile(SD, path, txt);
-      appendFile(SD, path, "\n");
-    }
-    appendFile(SD, path, ";");
-  }
- // double tempoAnterior2 = micros();
-//  for (uint8_t i = 0; i < n; i++){
-//    for (uint8_t j = 0; j < 6; j++){
-//      char txt[100]; 
-//      gcvt(Vector_data[i][j], 6, txt);
-//      appendFile(SD, path, txt);
-//      appendFile(SD, path, ",");
-//    }
-//    char txt[100]; 
-//    gcvt(tempo[i], 6, txt);
-//    appendFile(SD, path, txt);
-//    appendFile(SD, path, "\n");
-//  }
-//  appendFile(SD, path, ";");
- // Serial.print("Tempo do SD card:");
- // Serial.println(micros()-tempoAnterior2);
-  
+
+    // adicionando valores à fila
+    enqueue();
+
     
-  //delay(1000);
+    //TUDO ISSO ABAIXO TEM QUE ESTAR EM UMA TASK SEPARADA
+
+  }
   
 }
 
+void Task1code( void * pvParameters ){
+  Serial.print("Task1 running on core ");
+  Serial.println(xPortGetCoreID());
+
+  for(;;){
+    if(fila.tamanho>0){
+      for (uint8_t i = 0; i < n; i++){
+        for (uint8_t j = 0; j < 7; j++){
+          char txt[100]; 
+          gcvt(fila.inicio->vector[i][j], 6, txt);
+          appendFile(SD, path, txt);
+          appendFile(SD, path, ",");
+        }
+        appendFile(SD, path, "\n");
+      }
+      appendFile(SD, path, ";");
+    }
+    dequeue();
+  } 
+}
 
 void data(uint8_t mpu_number){
   Wire.beginTransmission(MPU_ADDR);
@@ -260,39 +320,7 @@ void data(uint8_t mpu_number){
   GyX = Wire.read() << 8 | Wire.read(); // 0x3B (ACCEL_XOUT_H) & 0x3C (ACCEL_XOUT_L)
   GyY = Wire.read() << 8 | Wire.read(); // 0x3D (ACCEL_YOUT_H) & 0x3E (ACCEL_YOUT_L)
   GyZ = Wire.read() << 8 | Wire.read(); // 0x3F (ACCEL_ZOUT_H) & 0x40 (ACCEL_ZOUT_L)
-
-  //Lembrete: atan = gives angle value between -90 and 90; atan2 = gives angle value between -180 and 180
-
-  /*Serial.print(float(AcX)*16/32767);Serial.print(", ");
-  Serial.print(float(AcY)*16/32767);Serial.print(", ");
-  Serial.print(float(AcZ)*16/32767);Serial.print("; ");
-  Serial.print(float(GyX)*250/32767);Serial.print(", ");
-  Serial.print(float(GyY)*250/32767);Serial.print(", ");
-  Serial.println(float(GyZ)*250/32767);*/
-
-/*  char txt[100]; 
-  double angle;
-  angle = double(AcX)*2/32767; gcvt(angle, 6, txt);
-  //Serial.print(angle);Serial.print(";");
-  appendFile(SD, path, txt);appendFile(SD, path, ";");
-  angle = double(AcY)*2/32767; gcvt(angle, 6, txt);
-  //Serial.print(angle);Serial.print(";");
-  appendFile(SD, path, txt);appendFile(SD, path, ";");
-  angle = double(AcZ)*2/32767; gcvt(angle, 6, txt);
-  //Serial.print(angle);Serial.print(";");
-  appendFile(SD, path, txt);appendFile(SD, path, ";");
-
-  angle = double(GyX)*250/32767; gcvt(angle, 6, txt);
-  //Serial.print(angle);Serial.print(";");
-  appendFile(SD, path, txt);appendFile(SD, path, ";");
-  angle = double(GyY)*250/32767; gcvt(angle, 6, txt);
-  //Serial.print(angle);Serial.print(";");
-  appendFile(SD, path, txt);appendFile(SD, path, ";");
-  angle = double(GyZ)*250/32767; gcvt(angle, 6, txt);
- // Serial.print(angle);Serial.println(";");
-  appendFile(SD, path, txt);appendFile(SD, path, "\n");*/
-
-  /*
+/*
   Vector_data[mpu_number][0] = double(AcX)*2/32767;
   Vector_data[mpu_number][1] = double(AcY)*2/32767;
   Vector_data[mpu_number][2] = double(AcZ)*2/32767;
@@ -310,5 +338,6 @@ void data(uint8_t mpu_number){
   Vector_data[mpu_number][4] = double(GyY)/65.5;
   Vector_data[mpu_number][5] = double(GyZ)/65.5;
 
+  Vector_data[mpu_number][6] =(millis()-tempoAnterior)/1000;
  
 }
