@@ -22,12 +22,14 @@
 
 TaskHandle_t Task1;
 
+bool colocando, tirando;
+
 const uint8_t n = 3; //número de MPUs sendo utilizado MAXIMO 13
 
 //NUMERO DO PINO DO ESP32 PARA CONECTAR CADA AD0
 
 //const uint8_t AD0_MPU[] = {15,  4, 16, 17, 3, 1, 34, 25, 32, 33, 25, 26, 27}; 
-const uint8_t AD0_MPU[] = {4, 16, 17, 3, 1, 34, 25, 32, 33, 25, 26, 27}; 
+const uint8_t AD0_MPU[] = {2, 4,16, 17, 3, 1, 34, 25, 32, 33, 25, 26, 27, 15}; 
 
 double Vector_data[n][7];
 unsigned long tempoAnterior =0;
@@ -47,18 +49,32 @@ struct Noh{
 struct Lista{
   struct Noh *inicio;
   struct Noh *fim;
-  int tamanho;
+  uint16_t tamanho;
 };
 struct Lista fila;
 
 void enqueue(){
   struct Noh *novo = (struct Noh *)malloc(sizeof(struct Noh));
+  Serial.println("Passando Uma");
   for (int i = 0; i < n; i++) {
     for (int j = 0; j < 7; j++) {
+      if (Vector_data[i][j]==NULL){
+        Serial.print("NULL ENDEREÇO ");Serial.print(i);Serial.println(j);
+        if (fila.fim->vector[i][j]!=0){
+          Vector_data[i][j]=fila.fim->vector[i][j];
+        }
+        else{
+          Vector_data[i][j]=0;
+        }
+        Serial.println(Vector_data[i][j]);
+      }
       novo->vector[i][j] = Vector_data[i][j];
+      //Serial.print("Bugador + ");Serial.print(i);Serial.println(j);
     }
   }
+  //Serial.println("Bugador 2");
   novo->proximo = NULL;
+ // Serial.println("Bugador 3");
   if(fila.fim == NULL){
     fila.inicio = novo;
     fila.fim = novo;
@@ -68,9 +84,11 @@ void enqueue(){
     fila.fim = novo;
   }
   fila.tamanho++;
+//  Serial.println("cheguei0");
 }
 
 void dequeue(){
+//  Serial.println("dequeue0");
   if(fila.inicio == NULL)
     //puts("Fila vazia!")
     ;
@@ -82,6 +100,7 @@ void dequeue(){
       fila.fim=NULL;
   }
   fila.tamanho--;
+    
 }
 
 
@@ -146,12 +165,12 @@ void select_MPU1(uint8_t mpu){
   if(mpu == 0){
     digitalWrite(AD0_MPU[n-1], LOW);    
     digitalWrite(AD0_MPU[mpu], HIGH);
-    delay(0.02);
+    //delay(0.02);
   }
   else{
     digitalWrite(AD0_MPU[mpu-1], LOW);    
     digitalWrite(AD0_MPU[mpu], HIGH);
-    delay(0.02);
+    //delay(0.02);
   }
   
 }
@@ -181,18 +200,18 @@ void writeFile(fs::FS &fs, const char * path, const char * message){
 }
 
 bool readFile(fs::FS &fs, const char * path){
-    Serial.printf("Reading file: %s\n", path);
+   // Serial.printf("Reading file: %s\n", path);
 
     File file = fs.open(path);
     if(!file){
-        Serial.println("Failed to open file for reading");
+      //  Serial.println("Failed to open file for reading");
         return false;
     }
 
-    Serial.print("Read from file: ");
+    /*Serial.print("Read from file: ");
     while(file.available()){
         Serial.write(file.read());
-    }
+    }*/
     file.close();
 
     return true;
@@ -213,21 +232,18 @@ void setup() {
   
   Wire.begin(); // sda, scl
   Wire.setClock(400000); // escolho o valor da velocidade de comunicação em Hz do I2C
-  delay(250);
 
   //inicializando cada MPU por vez // tentei usar BROADCASTING E N FUNFOU, tentar novamente um dia
   for (uint8_t i = 0; i < n; i++){
       select_MPU(i);
       setup_MPU();
   }
-  for (uint8_t i = 0; i < n; i++){
-      diselect_MPU();
-  }
+  diselect_MPU();
   
 
   Serial.println("Todo MPU configurado!");
-
-  if(!SD.begin()){
+  pinMode(5, OUTPUT);
+  if(!SD.begin(5)){
     Serial.println("Card Mount Failed");
     return;
   }
@@ -250,7 +266,7 @@ void setup() {
   xTaskCreatePinnedToCore(
                     Task1code,   /* Task function. */
                     "Task1",     /* name of task. */
-                    10000,       /* Stack size of task */
+                    90000,       /* Stack size of task */
                     NULL,        /* parameter of the task */
                     1,           /* priority of the task */
                     &Task1,      /* Task handle to keep track of created task */
@@ -263,24 +279,20 @@ void setup() {
 //LOOP RODA SEMPRE NO CORE 1
 //CRIAR NOVA TASK PARA RODAR NO CORE 0
 
-
-
 void loop() {
-  float tempo[n];
+  //Serial.println("Bugador 1");
   if(millis() - tempoAnterior >= T){ //para T = 0.05 -> tempoAtual [ms] - tempoAnterior [ms] >= 50 ms -> deve fazer o ciclo a cada 50ms
       //tempoAnterior = millis();
     for (uint8_t i = 0; i<n;i++){
-      tempo[i] = float(millis()-tempoAnterior)/1000;
       select_MPU1(i);
       data(i);
     }
     digitalWrite(4, LOW);//verificar
-
     // adicionando valores à fila
+    colocando = true;
+    while(tirando);
     enqueue();
-
-    
-    //TUDO ISSO ABAIXO TEM QUE ESTAR EM UMA TASK SEPARADA
+    colocando = false;
 
   }
   
@@ -290,20 +302,30 @@ void Task1code( void * pvParameters ){
   Serial.print("Task1 running on core ");
   Serial.println(xPortGetCoreID());
 
-  for(;;){
-    if(fila.tamanho>0){
+  while(1){
+    Serial.println("For");
+    if((fila.tamanho>0)&&(fila.inicio!=NULL)){
+      Serial.println("Bugador sim");
+      Serial.println("Passou0");
       for (uint8_t i = 0; i < n; i++){
+        Serial.println("Passou1");
         for (uint8_t j = 0; j < 7; j++){
+          Serial.println("Passou2");
           char txt[100]; 
           gcvt(fila.inicio->vector[i][j], 6, txt);
+          Serial.println("Passou3");
           appendFile(SD, path, txt);
           appendFile(SD, path, ",");
         }
         appendFile(SD, path, "\n");
       }
       appendFile(SD, path, ";");
-    }
-    dequeue();
+      tirando = true;
+      while(colocando);
+      dequeue();
+      Serial.println("Bugador nao");
+      tirando = false;
+    } 
   } 
 }
 
@@ -320,15 +342,7 @@ void data(uint8_t mpu_number){
   GyX = Wire.read() << 8 | Wire.read(); // 0x3B (ACCEL_XOUT_H) & 0x3C (ACCEL_XOUT_L)
   GyY = Wire.read() << 8 | Wire.read(); // 0x3D (ACCEL_YOUT_H) & 0x3E (ACCEL_YOUT_L)
   GyZ = Wire.read() << 8 | Wire.read(); // 0x3F (ACCEL_ZOUT_H) & 0x40 (ACCEL_ZOUT_L)
-/*
-  Vector_data[mpu_number][0] = double(AcX)*2/32767;
-  Vector_data[mpu_number][1] = double(AcY)*2/32767;
-  Vector_data[mpu_number][2] = double(AcZ)*2/32767;
 
-  Vector_data[mpu_number][3] = double(GyX)*250/32767;
-  Vector_data[mpu_number][4] = double(GyY)*250/32767;
-  Vector_data[mpu_number][5] = double(GyZ)*250/32767;
-  */
 
   Vector_data[mpu_number][0] = double(AcX)/16384;
   Vector_data[mpu_number][1] = double(AcY)/16384;
@@ -338,6 +352,12 @@ void data(uint8_t mpu_number){
   Vector_data[mpu_number][4] = double(GyY)/65.5;
   Vector_data[mpu_number][5] = double(GyZ)/65.5;
 
-  Vector_data[mpu_number][6] =(millis()-tempoAnterior)/1000;
+  Vector_data[mpu_number][6] = double(millis()-tempoAnterior)/1000;
+
+  for(int i = 0; i < 7; i++){
+    if (Vector_data[mpu_number][i]==NULL){
+      Serial.print("NULL ENDEREÇO ");Serial.print(mpu_number);Serial.println(i);
+    }
+  }
  
 }
