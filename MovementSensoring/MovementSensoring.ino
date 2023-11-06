@@ -1,10 +1,8 @@
-#include<Wire.h>
+#include <Wire.h>
 #include "FS.h"
 #include "SD.h"
 #include "SPI.h"
-
-//NESTE PROGRAMA, ESTOU USANDO 2 MPUS
-//O CÓDIGO VALIDA O FUNCIONAMENTO DO PINO AD0
+#include <stdlib.h>
 
 //PARA ADICIONAR MAIS SENSORES, MUDE O VALOR DE n, CONECTE NA ORDEM OS PINOS AD0 E MANDE BALA!
 
@@ -22,87 +20,24 @@
 
 TaskHandle_t Task1;
 
-bool colocando, tirando;
+volatile bool colocando, tirando;
 
 const uint8_t n = 3; //número de MPUs sendo utilizado MAXIMO 13
 
 //NUMERO DO PINO DO ESP32 PARA CONECTAR CADA AD0
 
-//const uint8_t AD0_MPU[] = {15,  4, 16, 17, 3, 1, 34, 25, 32, 33, 25, 26, 27}; 
-const uint8_t AD0_MPU[] = {2, 4,16, 17, 3, 1, 34, 25, 32, 33, 25, 26, 27, 15}; 
+const uint8_t AD0_MPU[] = {15,  2, 4, 16, 17, 3, 1, 13,  32, 33, 25, 26, 27}; 
+volatile uint8_t index_data = 0, index_SDCard = 0;
+volatile uint64_t contDATA = 0, contSD = 0;
+volatile double Vector_data[n][7][600];
+volatile unsigned long tempoAnterior =0;
+const uint8_t T =15;
 
-double Vector_data[n][7];
-unsigned long tempoAnterior =0;
-uint8_t T =15;
-
-int16_t AcX, AcY, AcZ, Tmp, GyX, GyY, GyZ;
+volatile int16_t AcX, AcY, AcZ, Tmp, GyX, GyY, GyZ;
 const int MPU_ADDR = 0x69; // I2C address of the MPU-6050
 
 char path[100]; //variavel para adicionar nome do txt
 char lineToAppend[500]; // string que armazena valor de um ciclo
-
-struct Noh{
-  double vector[n][7];
-  struct Noh *proximo;
-};
-
-struct Lista{
-  struct Noh *inicio;
-  struct Noh *fim;
-  uint16_t tamanho;
-};
-struct Lista fila;
-
-void enqueue(){
-  struct Noh *novo = (struct Noh *)malloc(sizeof(struct Noh));
-  Serial.println("Passando Uma");
-  for (int i = 0; i < n; i++) {
-    for (int j = 0; j < 7; j++) {
-      if (Vector_data[i][j]==NULL){
-        Serial.print("NULL ENDEREÇO ");Serial.print(i);Serial.println(j);
-        if (fila.fim->vector[i][j]!=0){
-          Vector_data[i][j]=fila.fim->vector[i][j];
-        }
-        else{
-          Vector_data[i][j]=0;
-        }
-        Serial.println(Vector_data[i][j]);
-      }
-      novo->vector[i][j] = Vector_data[i][j];
-      //Serial.print("Bugador + ");Serial.print(i);Serial.println(j);
-    }
-  }
-  //Serial.println("Bugador 2");
-  novo->proximo = NULL;
- // Serial.println("Bugador 3");
-  if(fila.fim == NULL){
-    fila.inicio = novo;
-    fila.fim = novo;
-  }
-  else{
-    fila.fim->proximo = novo;
-    fila.fim = novo;
-  }
-  fila.tamanho++;
-//  Serial.println("cheguei0");
-}
-
-void dequeue(){
-//  Serial.println("dequeue0");
-  if(fila.inicio == NULL)
-    //puts("Fila vazia!")
-    ;
-  else{
-    struct Noh *temp = fila.inicio;
-    fila.inicio = fila.inicio->proximo;
-    free(temp);
-    if (fila.inicio == NULL)
-      fila.fim=NULL;
-  }
-  fila.tamanho--;
-    
-}
-
 
 void appendFile(fs::FS &fs, const char * path, const char * message){
     Serial.printf("Appending to file: %s\n", path);
@@ -218,9 +153,6 @@ bool readFile(fs::FS &fs, const char * path){
 }
 
 void setup() {
-  fila.inicio = NULL;
-  fila.fim = NULL;
-  fila.tamanho = 0;
   
   // colocando todos os pinos AD0 em output
   for (uint8_t i = 0; i < 13; i++){ 
@@ -280,20 +212,16 @@ void setup() {
 //CRIAR NOVA TASK PARA RODAR NO CORE 0
 
 void loop() {
-  //Serial.println("Bugador 1");
+
   if(millis() - tempoAnterior >= T){ //para T = 0.05 -> tempoAtual [ms] - tempoAnterior [ms] >= 50 ms -> deve fazer o ciclo a cada 50ms
       //tempoAnterior = millis();
     for (uint8_t i = 0; i<n;i++){
       select_MPU1(i);
       data(i);
     }
+    (index_data >= 99)? index_data = 0: index_data++; //verificar se o valor de index_data estourou
     digitalWrite(4, LOW);//verificar
-    // adicionando valores à fila
-    colocando = true;
-    while(tirando);
-    enqueue();
-    colocando = false;
-
+    contDATA++;
   }
   
 }
@@ -303,29 +231,29 @@ void Task1code( void * pvParameters ){
   Serial.println(xPortGetCoreID());
 
   while(1){
-    Serial.println("For");
-    if((fila.tamanho>0)&&(fila.inicio!=NULL)){
-      Serial.println("Bugador sim");
-      Serial.println("Passou0");
+    if(contSD<contDATA){
+      char data[500];
       for (uint8_t i = 0; i < n; i++){
-        Serial.println("Passou1");
-        for (uint8_t j = 0; j < 7; j++){
-          Serial.println("Passou2");
+        for (uint8_t j = 0; j < 6; j++){
           char txt[100]; 
-          gcvt(fila.inicio->vector[i][j], 6, txt);
-          Serial.println("Passou3");
-          appendFile(SD, path, txt);
-          appendFile(SD, path, ",");
+          gcvt(Vector_data[i][j][index_SDCard], 6, txt);
+          //dtostrf(Vector_data[i][j][index_SDCard], 4, 4, txt);
+          if((i==0)&&(j==0))
+            strcpy(data, txt);
+          else
+            strcat(data, txt);
+
+          strcat(data, ",");
         }
-        appendFile(SD, path, "\n");
+        gcvt(Vector_data[i][6], 6, txt);
+        strcat(data, txt);
+        strcat(data, ",");
       }
-      appendFile(SD, path, ";");
-      tirando = true;
-      while(colocando);
-      dequeue();
-      Serial.println("Bugador nao");
-      tirando = false;
+      strcat(data, ";");
+      appendFile(SD, path, data);
     } 
+    (index_SDCard >= 99)? index_SDCard = 0: index_SDCard++;
+    contSD++;
   } 
 }
 
@@ -344,20 +272,13 @@ void data(uint8_t mpu_number){
   GyZ = Wire.read() << 8 | Wire.read(); // 0x3F (ACCEL_ZOUT_H) & 0x40 (ACCEL_ZOUT_L)
 
 
-  Vector_data[mpu_number][0] = double(AcX)/16384;
-  Vector_data[mpu_number][1] = double(AcY)/16384;
-  Vector_data[mpu_number][2] = double(AcZ)/16384;
+  Vector_data[mpu_number][0][index_data] = double(AcX)/16384;
+  Vector_data[mpu_number][1][index_data] = double(AcY)/16384;
+  Vector_data[mpu_number][2][index_data] = double(AcZ)/16384;
 
-  Vector_data[mpu_number][3] = double(GyX)/65.5;
-  Vector_data[mpu_number][4] = double(GyY)/65.5;
-  Vector_data[mpu_number][5] = double(GyZ)/65.5;
+  Vector_data[mpu_number][3][index_data] = double(GyX)/65.5;
+  Vector_data[mpu_number][4][index_data] = double(GyY)/65.5;
+  Vector_data[mpu_number][5][index_data] = double(GyZ)/65.5;
 
-  Vector_data[mpu_number][6] = double(millis()-tempoAnterior)/1000;
-
-  for(int i = 0; i < 7; i++){
-    if (Vector_data[mpu_number][i]==NULL){
-      Serial.print("NULL ENDEREÇO ");Serial.print(mpu_number);Serial.println(i);
-    }
-  }
- 
+  Vector_data[mpu_number][6][index_data] = double(millis()-tempoAnterior)/1000;
 }
