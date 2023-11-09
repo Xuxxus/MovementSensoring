@@ -2,7 +2,7 @@
 #include "FS.h"
 #include "SD.h"
 #include "SPI.h"
-#include <stdlib.h>
+#include <stdio.h>
 
 //PARA ADICIONAR MAIS SENSORES, MUDE O VALOR DE n, CONECTE NA ORDEM OS PINOS AD0 E MANDE BALA!
 
@@ -22,16 +22,16 @@ TaskHandle_t Task1;
 
 volatile bool colocando, tirando;
 
-const uint8_t n = 3; //número de MPUs sendo utilizado MAXIMO 13
+const uint8_t n = 1; //número de MPUs sendo utilizado MAXIMO 13
 
 //NUMERO DO PINO DO ESP32 PARA CONECTAR CADA AD0
 
 const uint8_t AD0_MPU[] = {15,  2, 4, 16, 17, 3, 1, 13,  32, 33, 25, 26, 27}; 
-volatile uint8_t index_data = 0, index_SDCard = 0;
+volatile uint32_t index_data = 0, index_SDCard = 0;
 volatile uint64_t contDATA = 0, contSD = 0;
 volatile double Vector_data[n][7][600];
 volatile unsigned long tempoAnterior =0;
-const uint8_t T =15;
+const uint8_t T =1000;
 
 volatile int16_t AcX, AcY, AcZ, Tmp, GyX, GyY, GyZ;
 const int MPU_ADDR = 0x69; // I2C address of the MPU-6050
@@ -177,14 +177,14 @@ void setup() {
   pinMode(5, OUTPUT);
   if(!SD.begin(5)){
     Serial.println("Card Mount Failed");
-    return;
+    //return;
   }
 
   uint8_t cardType = SD.cardType();
 
   if(cardType == CARD_NONE){
       Serial.println("No SD card attached");
-      return;
+      //return;
   }
 
   for (uint8_t i = 0; i < 255; i++){
@@ -214,6 +214,7 @@ void setup() {
 void loop() {
 
   if(millis() - tempoAnterior >= T){ //para T = 0.05 -> tempoAtual [ms] - tempoAnterior [ms] >= 50 ms -> deve fazer o ciclo a cada 50ms
+    Serial.print("Task1 running on core ");Serial.println(xPortGetCoreID());
       //tempoAnterior = millis();
     for (uint8_t i = 0; i<n;i++){
       select_MPU1(i);
@@ -227,17 +228,17 @@ void loop() {
 }
 
 void Task1code( void * pvParameters ){
-  Serial.print("Task1 running on core ");
-  Serial.println(xPortGetCoreID());
+  //Serial.print("Task1 running on core ");Serial.println(xPortGetCoreID());
 
   while(1){
+    //Serial.print("Task1 running on core ");Serial.println(xPortGetCoreID());
     if(contSD<contDATA){
       char data[500];
       for (uint8_t i = 0; i < n; i++){
-        for (uint8_t j = 0; j < 6; j++){
-          char txt[100]; 
-          gcvt(Vector_data[i][j][index_SDCard], 6, txt);
-          //dtostrf(Vector_data[i][j][index_SDCard], 4, 4, txt);
+        char txt[100];
+        for (uint8_t j = 0; j < 6; j++){ 
+          //gcvt(Vector_data[i][j][index_SDCard], 6, txt);
+          dtostrf(Vector_data[i][j][index_SDCard], 4, 4, txt);
           if((i==0)&&(j==0))
             strcpy(data, txt);
           else
@@ -245,16 +246,20 @@ void Task1code( void * pvParameters ){
 
           strcat(data, ",");
         }
-        gcvt(Vector_data[i][6], 6, txt);
+        //gcvt(Vector_data[i][6], 6, txt);
+        dtostrf(Vector_data[i][6][index_SDCard], 4, 4, txt);
         strcat(data, txt);
         strcat(data, ",");
       }
       strcat(data, ";");
-      appendFile(SD, path, data);
+      Serial.print("New data:");Serial.println(data);
+ //     appendFile(SD, path, data);
     } 
-    (index_SDCard >= 99)? index_SDCard = 0: index_SDCard++;
+    (index_SDCard >= 600)? index_SDCard = 0: index_SDCard++;
     contSD++;
   } 
+  bool a = false;
+  a++;
 }
 
 void data(uint8_t mpu_number){
