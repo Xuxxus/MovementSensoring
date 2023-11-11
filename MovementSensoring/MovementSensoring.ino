@@ -7,6 +7,8 @@
 //PARA ADICIONAR MAIS SENSORES, MUDE O VALOR DE n, CONECTE NA ORDEM OS PINOS AD0 E MANDE BALA!
 
 /*
+
+NEW SKETCH
  * Connect the SD card to the following pins:
  *
  * SD Card | ESP32
@@ -16,6 +18,8 @@
  *    VDD      3.3V
  *    D18      SCK
  *    D19      MISO
+NEW SKETCH
+
  */
 
 TaskHandle_t Task1;
