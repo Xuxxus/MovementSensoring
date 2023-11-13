@@ -22,6 +22,7 @@ NEW SKETCH
 
  */
 
+
 TaskHandle_t Task1;
 
 volatile bool colocando, tirando;
@@ -34,9 +35,13 @@ const uint8_t AD0_MPU[] = {15,  2, 4, 16, 17, 3, 1, 13,  32, 33, 25, 26, 27};
 volatile uint32_t index_data = 0, index_SDCard = 0;
 volatile uint64_t contDATA = 0, contSD = 0;
 volatile double Vector_data[n][7][600];
-volatile unsigned long tempoAnterior =0;
-const uint8_t T =1000;
+volatile unsigned long initialTime =0, LastRead = 0;
+const uint8_t T = 50;
+const uint8_t  LED_R  = 12;
+const uint8_t  LED_G  = 13;
+const uint8_t  SWITCH = 35;
 
+volatile uint8_t stopFlag = false;
 volatile int16_t AcX, AcY, AcZ, Tmp, GyX, GyY, GyZ;
 const int MPU_ADDR = 0x69; // I2C address of the MPU-6050
 
@@ -163,13 +168,22 @@ void setup() {
     pinMode(AD0_MPU[i], OUTPUT);
     digitalWrite(AD0_MPU[i], LOW);
   }
-  
+
+  // colocando pinos de LED em output
+  pinMode(LED_G, OUTPUT);
+  digitalWrite(LED_G, LOW);
+  pinMode(LED_R, OUTPUT);
+  digitalWrite(LED_R, LOW);
+
+  //Writing switch button as input
+  pinMode(SWITCH, INPUT);
+
   Serial.begin(115200);
   
-  Wire.begin(); // sda, scl
+  Wire.begin();
   Wire.setClock(400000); // escolho o valor da velocidade de comunicação em Hz do I2C
 
-  //inicializando cada MPU por vez // tentei usar BROADCASTING E N FUNFOU, tentar novamente um dia
+  //Initializing each MPU
   for (uint8_t i = 0; i < n; i++){
       select_MPU(i);
       setup_MPU();
@@ -197,8 +211,15 @@ void setup() {
       break;
   }
   Serial.println(path);
-
-
+  while(1){ //Waiting button to be pressed
+    delay(100);
+    if(digitalRead(SWITCH) == HIGH){ //debugging
+      delay(100);
+      if(digitalRead(SWITCH)==HIGH)
+        break;
+    }
+  }
+  Serial.println("BOTAO PRESSIONADO");
   xTaskCreatePinnedToCore(
                     Task1code,   /* Task function. */
                     "Task1",     /* name of task. */
@@ -209,61 +230,92 @@ void setup() {
                     0);          /* pin task to core 0 */    
   
   writeFile(SD, path, "Starting the program!\n");
-  tempoAnterior = millis();
+  initialTime = millis();
+  //Green Light as started Recording
+  digitalWrite(LED_G, HIGH);
 }
 
-//LOOP RODA SEMPRE NO CORE 1
-//CRIAR NOVA TASK PARA RODAR NO CORE 0
 
+//LOOP FUNCTION RUNNING ON CORE 0
+//THIS FUNCTION READS THE SENSOR BASED ON PERIOD T
 void loop() {
-
-  if(millis() - tempoAnterior >= T){ //para T = 0.05 -> tempoAtual [ms] - tempoAnterior [ms] >= 50 ms -> deve fazer o ciclo a cada 50ms
-    Serial.print("Task1 running on core ");Serial.println(xPortGetCoreID());
-      //tempoAnterior = millis();
+  //To T = 0.05 -> tempoAtual [ms] - LastRead [ms] >= 50 ms -> Must do the cicle every 50 miliseconds
+  if((millis() - LastRead >= T) && (!stopFlag)){ //para T = 0.05 -> tempoAtual [ms] - LastRead [ms] >= 50 ms -> deve fazer o ciclo a cada 50ms
+   // Serial.print("Task1 running on core ");Serial.println(xPortGetCoreID());
+    LastRead = millis();
     for (uint8_t i = 0; i<n;i++){
+     // Serial.print("for ");Serial.println(i);
       select_MPU1(i);
-      data(i);
+      Serial.print("select ");Serial.println(i);
+      //data(i);
     }
-    (index_data >= 99)? index_data = 0: index_data++; //verificar se o valor de index_data estourou
+    (index_data >= 99)? index_data = 0: index_data++; //Check index overflow
     digitalWrite(4, LOW);//verificar
-    contDATA++;
+    contDATA++; //adding to number of data acquired
+
   }
-  
+
+  else if (stopFlag)
+    vTaskDelay(1000); //enters dummy mode
 }
 
+//TASK1CODE RUNNING ON CORE 1
+//THIS FUNCTION WRITES THE DATA ON SD CARD ONCE THEY ARE READY
 void Task1code( void * pvParameters ){
   //Serial.print("Task1 running on core ");Serial.println(xPortGetCoreID());
-
   while(1){
     //Serial.print("Task1 running on core ");Serial.println(xPortGetCoreID());
-    if(contSD<contDATA){
-      char data[500];
+
+    //Checking if button was pressed
+    if((digitalRead(SWITCH)==HIGH) && (millis()-initialTime > 1000)){ //debugging
+      delay(50);
+      if(digitalRead(SWITCH)==HIGH){
+        delay(50);
+        if(digitalRead(SWITCH)==HIGH){
+          delay(100);
+          if(digitalRead(SWITCH)==HIGH){
+            digitalWrite(LED_R, HIGH); //Indicating end of the program
+            digitalWrite(LED_G, HIGH); //Indicating end of the program
+            stopFlag = true; //ending program
+          }
+        }
+      }
+    }
+
+    if ((stopFlag) && (contSD == contDATA)){
+      digitalWrite(LED_G, LOW); //Indicating that you can take the SD card out
+    }
+
+    if(contSD<contDATA){ //IF THERE'S DATA TO ANALIZE
+      Serial.print("DataLeft");
+      Serial.println(contDATA-contSD);
+      char data[500]; //STRING TO WRITE ON SD CARD
       for (uint8_t i = 0; i < n; i++){
-        char txt[100];
+        char txt[100]; //STRING TO CONVERT DATA ON STRING
         for (uint8_t j = 0; j < 6; j++){ 
           //gcvt(Vector_data[i][j][index_SDCard], 6, txt);
-          dtostrf(Vector_data[i][j][index_SDCard], 4, 4, txt);
-          if((i==0)&&(j==0))
+          dtostrf(Vector_data[i][j][index_SDCard], 4, 4, txt); //DATA TO STRING
+          if((i==0)&&(j==0)) //IF FIRST TIME, DATA = TXT
             strcpy(data, txt);
           else
-            strcat(data, txt);
+            strcat(data, txt);//IF NOT FIRST TIME, DATA += TXT
 
-          strcat(data, ",");
+          strcat(data, ",");//COMMA TO SEPARATE EACH VALUE
         }
         //gcvt(Vector_data[i][6], 6, txt);
-        dtostrf(Vector_data[i][6][index_SDCard], 4, 4, txt);
+        dtostrf(Vector_data[i][6][index_SDCard], 4, 4, txt); //TIME TO ADD TO EACH SENSOR
         strcat(data, txt);
         strcat(data, ",");
       }
-      strcat(data, ";");
+      strcat(data, ";"); // ; TO INDICATE END OF THIS READDING
       Serial.print("New data:");Serial.println(data);
- //     appendFile(SD, path, data);
+      appendFile(SD, path, data);//APPENDING TO SD CARD
+      (index_SDCard >= 600)? index_SDCard = 0: index_SDCard++; //RE-STARTING INDEX
+      contSD++;//MORE DATA SAVED
     } 
-    (index_SDCard >= 600)? index_SDCard = 0: index_SDCard++;
-    contSD++;
+    else
+      vTaskDelay(1); //So this doesnt die on WWDT
   } 
-  bool a = false;
-  a++;
 }
 
 void data(uint8_t mpu_number){
@@ -271,7 +323,15 @@ void data(uint8_t mpu_number){
   Wire.write(0x3B);  // starting with register 0x3B (ACCEL_XOUT_H)
   Wire.endTransmission(false);
   Wire.beginTransmission(MPU_ADDR);
-  Wire.requestFrom(MPU_ADDR, 14, true); // request a total of 14 registers
+  //IF MPU IS NOT CONNECTED, IT MIGHT NOT COME BACK FORM REQUEST FUNCTION BELOW
+  //PUTTING GREEN LOW AND RED HIGH TO INDICATE ERROR
+  digitalWrite(LED_G, LOW);
+  digitalWrite(LED_R, HIGH);
+  Wire.requestFrom(MPU_ADDR, 14, true); //IF IT DOESNT COME BACK FROM THIS, IT CAN BE AN CONNECTION ERROR
+  //CAME BACK FROM FUNCTION, THEN TURN LED R ON
+  digitalWrite(LED_G, HIGH);
+  digitalWrite(LED_R, LOW);
+  //TAKING DATA FROM MPU
   AcX = Wire.read() << 8 | Wire.read(); // 0x3B (ACCEL_XOUT_H) & 0x3C (ACCEL_XOUT_L)
   AcY = Wire.read() << 8 | Wire.read(); // 0x3D (ACCEL_YOUT_H) & 0x3E (ACCEL_YOUT_L)
   AcZ = Wire.read() << 8 | Wire.read(); // 0x3F (ACCEL_ZOUT_H) & 0x40 (ACCEL_ZOUT_L)
@@ -280,7 +340,7 @@ void data(uint8_t mpu_number){
   GyY = Wire.read() << 8 | Wire.read(); // 0x3D (ACCEL_YOUT_H) & 0x3E (ACCEL_YOUT_L)
   GyZ = Wire.read() << 8 | Wire.read(); // 0x3F (ACCEL_ZOUT_H) & 0x40 (ACCEL_ZOUT_L)
 
-
+  //SAVING DATA IN VECTORS
   Vector_data[mpu_number][0][index_data] = double(AcX)/16384;
   Vector_data[mpu_number][1][index_data] = double(AcY)/16384;
   Vector_data[mpu_number][2][index_data] = double(AcZ)/16384;
@@ -288,6 +348,7 @@ void data(uint8_t mpu_number){
   Vector_data[mpu_number][3][index_data] = double(GyX)/65.5;
   Vector_data[mpu_number][4][index_data] = double(GyY)/65.5;
   Vector_data[mpu_number][5][index_data] = double(GyZ)/65.5;
-
-  Vector_data[mpu_number][6][index_data] = double(millis()-tempoAnterior)/1000;
+  //SAVING TIME IN VECTOR
+  Vector_data[mpu_number][6][index_data] = double(millis()-initialTime)/1000;
+  Serial.print("Dado lido: "); Serial.println(Vector_data[mpu_number][0][index_data]);
 }
