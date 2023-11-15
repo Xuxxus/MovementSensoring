@@ -25,27 +25,28 @@ NEW SKETCH
 
 TaskHandle_t Task1;
 
-volatile bool colocando, tirando;
+const uint8_t n = 13; //number of IMUs conected (Max of 13)
 
-const uint8_t n = 1; //número de MPUs sendo utilizado MAXIMO 13
-
-//NUMERO DO PINO DO ESP32 PARA CONECTAR CADA AD0
-
+//Follow this pin numbers to conect your IMUs
 const uint8_t AD0_MPU[] = {15,  2, 4, 16, 17, 3, 1, 13,  32, 33, 25, 26, 27}; 
-volatile uint32_t index_data = 0, index_SDCard = 0;
-volatile uint64_t contDATA = 0, contSD = 0;
-volatile double Vector_data[n][7][600];
-volatile unsigned long initialTime =0, LastRead = 0;
-const uint8_t T = 50;
+const uint16_t history_size = 600/n; //if the code doesn't compile, consider making this number smaller
+const uint8_t T = 50; //
+
+//Buttons and LEDs connections
 const uint8_t  LED_R  = 12;
 const uint8_t  LED_G  = 13;
 const uint8_t  SWITCH = 35;
+
+volatile uint32_t index_data = 0, index_SDCard = 0;
+volatile uint64_t contDATA = 0, contSD = 0;
+volatile double Vector_data[n][7][history_size];
+volatile unsigned long initialTime =0, LastRead = 0;
 
 volatile uint8_t stopFlag = false;
 volatile int16_t AcX, AcY, AcZ, Tmp, GyX, GyY, GyZ;
 const int MPU_ADDR = 0x69; // I2C address of the MPU-6050
 
-char path[100]; //variavel para adicionar nome do txt
+char path[100]; //variable to hold the name of the txt file on the sd card
 char lineToAppend[500]; // string que armazena valor de um ciclo
 
 void appendFile(fs::FS &fs, const char * path, const char * message){
@@ -95,17 +96,8 @@ void setup_MPU(){
   Wire.endTransmission();// termina a comunicação   
 }
 
+//foi criado uma variante do select_MPU pois nao faz sentido ter um loop para deixar tudo em low se ha a funçaõ diselect fazendo isso toda vez
 void select_MPU(uint8_t mpu){
-
-  for (uint8_t i = 0; i <= n; i++){
-    digitalWrite(AD0_MPU[i], LOW);
-    delay(0.2);
-  }
-  digitalWrite(AD0_MPU[mpu], HIGH);
-  delay(0.2);
-}
-//foi criado uma variante do select_MPU1 pois nao faz sentido ter um loop para deixar tudo em low se ha a funçaõ diselect fazendo isso toda vez
-void select_MPU1(uint8_t mpu){
   if(mpu == 0){
     digitalWrite(AD0_MPU[n-1], LOW);    
     digitalWrite(AD0_MPU[mpu], HIGH);
@@ -245,9 +237,9 @@ void loop() {
     LastRead = millis();
     for (uint8_t i = 0; i<n;i++){
      // Serial.print("for ");Serial.println(i);
-      select_MPU1(i);
+      select_MPU(i);
       Serial.print("select ");Serial.println(i);
-      //data(i);
+      data(i);
     }
     (index_data >= 99)? index_data = 0: index_data++; //Check index overflow
     digitalWrite(4, LOW);//verificar
@@ -293,8 +285,8 @@ void Task1code( void * pvParameters ){
       for (uint8_t i = 0; i < n; i++){
         char txt[100]; //STRING TO CONVERT DATA ON STRING
         for (uint8_t j = 0; j < 6; j++){ 
-          //gcvt(Vector_data[i][j][index_SDCard], 6, txt);
-          dtostrf(Vector_data[i][j][index_SDCard], 4, 4, txt); //DATA TO STRING
+          gcvt(Vector_data[i][j][index_SDCard], 6, txt);
+          //dtostrf(Vector_data[i][j][index_SDCard], 4, 4, txt); //DATA TO STRING
           if((i==0)&&(j==0)) //IF FIRST TIME, DATA = TXT
             strcpy(data, txt);
           else
@@ -302,15 +294,15 @@ void Task1code( void * pvParameters ){
 
           strcat(data, ",");//COMMA TO SEPARATE EACH VALUE
         }
-        //gcvt(Vector_data[i][6], 6, txt);
-        dtostrf(Vector_data[i][6][index_SDCard], 4, 4, txt); //TIME TO ADD TO EACH SENSOR
+        gcvt(Vector_data[i][6][index_SDCard], 6, txt);
+        //dtostrf(Vector_data[i][6][index_SDCard], 4, 4, txt); //TIME TO ADD TO EACH SENSOR
         strcat(data, txt);
         strcat(data, ",");
       }
-      strcat(data, ";"); // ; TO INDICATE END OF THIS READDING
+      //strcat(data, ";"); // ; TO INDICATE END OF THIS READDING
       Serial.print("New data:");Serial.println(data);
       appendFile(SD, path, data);//APPENDING TO SD CARD
-      (index_SDCard >= 600)? index_SDCard = 0: index_SDCard++; //RE-STARTING INDEX
+      (index_SDCard >= history_size)? index_SDCard = 0: index_SDCard++; //RE-STARTING INDEX
       contSD++;//MORE DATA SAVED
     } 
     else
