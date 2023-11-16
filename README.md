@@ -1,8 +1,9 @@
-# Project Title
+# Movement Sensoring
 
 ## Overview
 
-This project is designed to read data from multiple MPU6050 IMUs (Inertial Measurement Units) and store the collected values on an SD Card using the ESP32 DEV KIT and Arduino IDE (version 1.18.19).
+This project is designed to read data from multiple MPU6050 IMUs and store the collected values on an SD Card using the ESP32 DEV KIT and Arduino IDE (version 1.8.19).
+This is part of a OpenSenseRT based project. More details on the [main repository](https://github.com/Xuxxus/CodigoKalman) and on the [other repos](#Additional-Repositories) .
 
 ### Features
 
