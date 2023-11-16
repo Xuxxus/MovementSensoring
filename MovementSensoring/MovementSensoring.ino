@@ -21,17 +21,23 @@
  *    D19      MISO
  */
 
-const uint8_t n = 3; //número de MPUs sendo utilizado MAXIMO 13
+const uint8_t n = 1; //número de MPUs sendo utilizado MAXIMO 13
 
 //NUMERO DO PINO DO ESP32 PARA CONECTAR CADA AD0
 
 //const uint8_t AD0_MPU[] = {15,  4, 16, 17, 3, 1, 34, 25, 32, 33, 25, 26, 27}; 
-const uint8_t AD0_MPU[] = {4, 16, 17, 3, 1, 34, 25, 32, 33, 25, 26, 27}; 
+const uint8_t AD0_MPU[] = {17,16, 17,  4, 34, 32, 33, 25, 26,3,1,27}; 
+//const uint8_t AD0_MPU[] = {4, 16, 17, 3, 1, 34, 25, 32, 33, 25, 26}; 
+
+
+float AngleRoll,AnglePitch,AngleYaw;
+int valor;
 
 double Vector_data[n][7];
 unsigned long tempoAnterior =0;
 unsigned long LastTempo =0;
-uint8_t T =0.0000;
+//uint8_t T =4000; // T está em ms, ou seja, a cada T ms eu desejo fazer 1 ciclo
+int T=15;
 
 int16_t AcX, AcY, AcZ, Tmp, GyX, GyY, GyZ;
 const int MPU_ADDR = 0x69; // I2C address of the MPU-6050
@@ -89,32 +95,49 @@ void setup_MPU(){
 
 void select_MPU(uint8_t mpu){
 
-  for (uint8_t i = 0; i <= n; i++){
+  for (uint8_t i = 0; i < n; i++){
     digitalWrite(AD0_MPU[i], LOW);
-    delay(0.2);
+    delay(10);
   }
   digitalWrite(AD0_MPU[mpu], HIGH);
-  delay(0.2);
+  delay(10);
 }
+//const uint8_t AD0_MPU[] = {16, 17, 1, 2, 34, 25, 32, 33, 25, 26}; 
 //foi criado uma variante do select_MPU1 pois nao faz sentido ter um loop para deixar tudo em low se ha a funçaõ diselect fazendo isso toda vez
 void select_MPU1(uint8_t mpu){
   if(mpu == 0){
-    digitalWrite(AD0_MPU[n-1], LOW);    
-    digitalWrite(AD0_MPU[mpu], HIGH);
-    delay(0.02);
+    if(n>1){
+      //Serial.print("Entrou n>1 porta:");
+      //Serial.println(AD0_MPU[mpu]);
+      
+      digitalWrite(AD0_MPU[n-1], LOW);   
+       
+      digitalWrite(AD0_MPU[mpu], HIGH);
+      delay(1);
+    }
+    else{     
+      //Serial.println("Entrou n = 0");
+      digitalWrite(AD0_MPU[mpu], HIGH);
+      delay(1);
+    }
   }
   else{
-    digitalWrite(AD0_MPU[mpu-1], LOW);    
+    //Serial.print("Entrou mpu dif 0 porta: ");
+    //Serial.println(AD0_MPU[mpu]);
+    //delay(300);
+    digitalWrite(AD0_MPU[mpu-1], LOW);  
+    //delay(40);   
     digitalWrite(AD0_MPU[mpu], HIGH);
-    delay(0.02);
+    delay(1);
   }
   
 }
 
 void diselect_MPU(){
 
-  for (uint8_t i = 0; i <= n; i++){
+  for (uint8_t i = 0; i < n; i++){
     digitalWrite(AD0_MPU[i], LOW);
+    delay(10);
   }
 }
 
@@ -156,7 +179,7 @@ bool readFile(fs::FS &fs, const char * path){
 
 void setup() {
   // colocando todos os pinos AD0 em output
-  for (uint8_t i = 0; i < 13; i++){ 
+  for (uint8_t i = 0; i < n; i++){ 
     pinMode(AD0_MPU[i], OUTPUT);
     digitalWrite(AD0_MPU[i], LOW);
   }
@@ -164,7 +187,7 @@ void setup() {
   //Serial.begin(115200);
   
   Wire.begin(); // sda, scl
-  Wire.setClock(400000); // escolho o valor da velocidade de comunicação em Hz do I2C
+  Wire.setClock(200000); // escolho o valor da velocidade de comunicação em Hz do I2C
   delay(250);
 
   SPI.begin();
@@ -204,6 +227,7 @@ void setup() {
   
   writeFile(SD, path, "Starting the program!\n");
   tempoAnterior = millis();
+  Serial.print("Comecou ");
 }
 
 void loop() {
@@ -231,23 +255,15 @@ void loop() {
       } 
       gcvt(Vector_data[i][6], 6, txt);
       strcat(lineToAppend, txt);
-      strcat(lineToAppend, "\n");
+      strcat(lineToAppend, ",");
       //appendFile(SD, path, txt);
       //appendFile(SD, path, "\n");
     }
-    strcat(lineToAppend, ";");
+    //strcat(lineToAppend, ",");
     //appendFile(SD, path, ";");
     appendFile(SD, path, lineToAppend);
     //Serial.println(lineToAppend);
   }
-  else{
-    Serial.print("Atraso");
-  }
-
-  //lineToAppend[0] = "\0";
-    
-  //delay(1000);
-  
 }
 
 
@@ -273,10 +289,5 @@ void data(uint8_t mpu_number){
   Vector_data[mpu_number][4] = double(GyY)/65.5;
   Vector_data[mpu_number][5] = double(GyZ)/65.5;
   
-  Vector_data[mpu_number][6] = (double(millis()-tempoAnterior))/1000;
-  //Serial.println(Vector_data[mpu_number][6]);
-
-  digitalWrite(AD0_MPU[mpu_number], LOW);
-
- 
-}
+  Vector_data[mpu_number][6] = (double(millis()-tempoAnterior))/1000;  
+ }
