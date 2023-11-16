@@ -47,27 +47,32 @@ If you want to contribute to this project, follow these steps:
 1. Fork the repository.
 
 2. Create a new branch for your feature:
+   
+   ```bash
+    git branch feature-name
+   ```
+    ```bash
+    git checkout feature-name
 
-    '''bash
-    git checkout -b feature-name
-
-3. Make your changes and commit them:
-
-    '''bash
+4. Make your changes and commit them:
+   ```bash
+   git add .
+   ```
+    ```bash
     git commit -m 'Add your feature'
 
-4. Push to the branch:
+6. Push to the branch:
 
-    '''bash
-    git commit -m 'Add your feature'
+    ```bash
+    git push origin feature-name
 
-5. Create a pull request. Please, be clear about what you did.
+7. Create a pull request. Please, be clear about what you did.
 
 ## Additional Repositories
 
-* OpenSense Data Processing: Main repository for processing data suitable for OpenSense software.
+* [OpenSense Data Processing](https://github.com/Xuxxus/CodigoKalman): Main repository for processing data suitable for OpenSense software.
 
-* PCB Repository: Repository for the PCB used in this project.
+* [PCB Repository](https://github.com/Xuxxus/ConnectionBoard): Repository for the PCB used in this project.
 
 ## Acknowledgments
 
