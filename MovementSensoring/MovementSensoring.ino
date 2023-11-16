@@ -29,6 +29,7 @@ const uint8_t n = 1; //número de MPUs sendo utilizado MAXIMO 13
 const uint8_t AD0_MPU[] = {17,16, 17,  4, 34, 32, 33, 25, 26,3,1,27}; 
 //const uint8_t AD0_MPU[] = {4, 16, 17, 3, 1, 34, 25, 32, 33, 25, 26}; 
 
+
 float AngleRoll,AnglePitch,AngleYaw;
 int valor;
 
@@ -183,7 +184,7 @@ void setup() {
     digitalWrite(AD0_MPU[i], LOW);
   }
   
-  Serial.begin(115200);
+  //Serial.begin(115200);
   
   Wire.begin(); // sda, scl
   Wire.setClock(200000); // escolho o valor da velocidade de comunicação em Hz do I2C
@@ -230,12 +231,9 @@ void setup() {
 }
 
 void loop() {
-  
   char lineToAppend[5000]; // string que armazena valor de um ciclo
-  //Serial.print("Tempo do if:");
-  //Serial.println(millis() - LastTempo);
-  if(millis() - LastTempo >= T){ //para T = 0.05 -> tempoAtual [ms] - tempoAnterior [ms] >= 0.05 ms -> deve fazer o ciclo a cada 0.05ms
-    LastTempo = millis();
+  if(millis() - LastTempo >= T){ //para T = 0.05 -> tempoAtual [ms] - tempoAnterior [ms] >= 50 ms -> deve fazer o ciclo a cada 50ms
+      LastTempo = millis();
     for (uint8_t i = 0; i<n;i++){
       ////Serial.print("MPU ");//Serial.print(i);//Serial.println(" :");
       select_MPU1(i);
@@ -266,7 +264,6 @@ void loop() {
     appendFile(SD, path, lineToAppend);
     //Serial.println(lineToAppend);
   }
-  
 }
 
 
@@ -292,6 +289,5 @@ void data(uint8_t mpu_number){
   Vector_data[mpu_number][4] = double(GyY)/65.5;
   Vector_data[mpu_number][5] = double(GyZ)/65.5;
   
-  Vector_data[mpu_number][6] = (double(millis()-tempoAnterior))/1000;
-  
+  Vector_data[mpu_number][6] = (double(millis()-tempoAnterior))/1000;  
  }
