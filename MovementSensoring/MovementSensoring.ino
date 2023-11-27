@@ -1,8 +1,10 @@
+
 #include <Wire.h>
 #include "FS.h"
 #include "SD.h"
 #include "SPI.h"
 #include <stdio.h>
+
 
 //PARA ADICIONAR MAIS SENSORES, MUDE O VALOR DE n, CONECTE NA ORDEM OS PINOS AD0 E MANDE BALA!
 
@@ -42,6 +44,7 @@ volatile uint64_t contDATA = 0, contSD = 0;
 volatile double Vector_data[n][7][history_size];
 volatile unsigned long initialTime =0, LastRead = 0;
 
+
 volatile uint8_t stopFlag = false;
 volatile int16_t AcX, AcY, AcZ, Tmp, GyX, GyY, GyZ;
 const int MPU_ADDR = 0x69; // I2C address of the MPU-6050
@@ -50,17 +53,19 @@ char path[100]; //variable to hold the name of the txt file on the sd card
 char lineToAppend[500]; // string que armazena valor de um ciclo
 
 void appendFile(fs::FS &fs, const char * path, const char * message){
-    Serial.printf("Appending to file: %s\n", path);
+    ////Serial.printf("Appending to file: %s\n", path);
+    ////Serial.print("Appending to file:");
+    ////Serial.print(path);
 
     File file = fs.open(path, FILE_APPEND);
     if(!file){
-        Serial.println("Failed to open file for appending");
+        //Serial.println("Failed to open file for appending");
         return;
     }
     if(file.print(message)){
-        Serial.println("Message appended");
+        //Serial.println("Message appended");
     } else {
-        Serial.println("Append failed");
+        //Serial.println("Append failed");
     }
     file.close();
 }
@@ -73,7 +78,7 @@ void setup_MPU(){
   Wire.endTransmission(false);
 
   Wire.beginTransmission(MPU_ADDR);
-  Wire.write(0x19); //registrador 107 ou 6B -> Escolhe a condição de operação (sleep, modo power on, etc)
+  Wire.write(0x19); //sample rate
   Wire.write(0x00); // parametro que desejo 
   Wire.endTransmission(false);
 
@@ -104,22 +109,27 @@ void select_MPU(uint8_t mpu){
     //delay(0.02);
   }
   else{
-    digitalWrite(AD0_MPU[mpu-1], LOW);    
+    //Serial.print("Entrou mpu dif 0 porta: ");
+    //Serial.println(AD0_MPU[mpu]);
+    //delay(300);
+    digitalWrite(AD0_MPU[mpu-1], LOW);  
+    //delay(40);   
     digitalWrite(AD0_MPU[mpu], HIGH);
-    //delay(0.02);
   }
   
 }
 
 void diselect_MPU(){
 
-  for (uint8_t i = 0; i <= n; i++){
+  for (uint8_t i = 0; i < n; i++){
     digitalWrite(AD0_MPU[i], LOW);
+    delay(10);
   }
 }
 
 
 void writeFile(fs::FS &fs, const char * path, const char * message){
+
     //Serial.printf("Writing file: %s\n", path);
 
     File file = fs.open(path, FILE_WRITE);
@@ -136,6 +146,7 @@ void writeFile(fs::FS &fs, const char * path, const char * message){
 }
 
 bool readFile(fs::FS &fs, const char * path){
+
    // Serial.printf("Reading file: %s\n", path);
 
     File file = fs.open(path);
@@ -147,6 +158,7 @@ bool readFile(fs::FS &fs, const char * path){
     /*Serial.print("Read from file: ");
     while(file.available()){
         Serial.write(file.read());
+
     }*/
     file.close();
 
@@ -156,7 +168,7 @@ bool readFile(fs::FS &fs, const char * path){
 void setup() {
   
   // colocando todos os pinos AD0 em output
-  for (uint8_t i = 0; i < 13; i++){ 
+  for (uint8_t i = 0; i < n; i++){ 
     pinMode(AD0_MPU[i], OUTPUT);
     digitalWrite(AD0_MPU[i], LOW);
   }
@@ -249,6 +261,7 @@ void loop() {
 
   else if (stopFlag)
     vTaskDelay(1000); //enters dummy mode
+
 }
 
 //TASK1CODE RUNNING ON CORE 1
