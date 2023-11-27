@@ -25,12 +25,12 @@ NEW SKETCH
 
 TaskHandle_t Task1;
 
-const uint8_t n = 13; //number of IMUs conected (Max of 13)
+const uint8_t n = 5; //number of IMUs conected (Max of 13)
 
 //Follow this pin numbers to conect your IMUs
 const uint8_t AD0_MPU[] = {15,  2, 4, 16, 17, 3, 1, 13,  32, 33, 25, 26, 27}; 
 const uint16_t history_size = 600/n; //if the code doesn't compile, consider making this number smaller
-const uint8_t T = 50; //
+const uint8_t T = 0; //
 
 //Buttons and LEDs connections
 const uint8_t  LED_R  = 12;
@@ -241,7 +241,7 @@ void loop() {
       Serial.print("select ");Serial.println(i);
       data(i);
     }
-    (index_data >= 99)? index_data = 0: index_data++; //Check index overflow
+    (index_data >= history_size-1)? index_data = 0: index_data++; //Check index overflow
     digitalWrite(4, LOW);//verificar
     contDATA++; //adding to number of data acquired
 
@@ -259,7 +259,7 @@ void Task1code( void * pvParameters ){
     //Serial.print("Task1 running on core ");Serial.println(xPortGetCoreID());
 
     //Checking if button was pressed
-    if((digitalRead(SWITCH)==HIGH) && (millis()-initialTime > 1000)){ //debugging
+    if((digitalRead(SWITCH)==HIGH) && (millis()-initialTime > 5000)){ //debugging
       delay(50);
       if(digitalRead(SWITCH)==HIGH){
         delay(50);
@@ -302,7 +302,7 @@ void Task1code( void * pvParameters ){
       //strcat(data, ";"); // ; TO INDICATE END OF THIS READDING
       Serial.print("New data:");Serial.println(data);
       appendFile(SD, path, data);//APPENDING TO SD CARD
-      (index_SDCard >= history_size)? index_SDCard = 0: index_SDCard++; //RE-STARTING INDEX
+      (index_SDCard >= history_size-1)? index_SDCard = 0: index_SDCard++; //RE-STARTING INDEX
       contSD++;//MORE DATA SAVED
     } 
     else
