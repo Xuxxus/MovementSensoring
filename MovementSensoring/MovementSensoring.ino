@@ -210,7 +210,7 @@ void setup() {
   }
 
   for (uint8_t i = 0; i < 255; i++){
-    sprintf(path, "/euler%d.txt", i); 
+    sprintf(path, "/IMU%d.txt", i); 
     if (!readFile(SD,path))
       break;
   }
@@ -233,7 +233,7 @@ void setup() {
                     &Task1,      /* Task handle to keep track of created task */
                     0);          /* pin task to core 0 */    
   
-  writeFile(SD, path, "Starting the program!\n");
+  //writeFile(SD, path, "Starting the program!\n");
   initialTime = millis();
   //Green Light as started Recording
   digitalWrite(LED_G, HIGH);
@@ -310,7 +310,8 @@ void Task1code( void * pvParameters ){
         gcvt(Vector_data[i][6][index_SDCard], 6, txt);
         //dtostrf(Vector_data[i][6][index_SDCard], 4, 4, txt); //TIME TO ADD TO EACH SENSOR
         strcat(data, txt);
-        strcat(data, ",");
+	if (!((j==5)&&(i == n-1)&&(contSD == contDATA)&&(stopFlag)))
+        	strcat(data, ",");
       }
       //strcat(data, ";"); // ; TO INDICATE END OF THIS READDING
       Serial.print("New data:");Serial.println(data);
